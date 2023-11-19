@@ -1,7 +1,8 @@
 import argparse
 import datetime
 import pandas as pd
-from utils import perform_get_request, xml_to_load_dataframe, xml_to_gen_data, renewable_energies
+from utils import perform_get_request, xml_to_load_dataframe, xml_to_gen_data
+from datetime import timedelta, datetime
 
 def get_load_data_from_entsoe(regions, periodStart='202302240000', periodEnd='202303240000', output_path='./data'):
     
@@ -23,19 +24,17 @@ def get_load_data_from_entsoe(regions, periodStart='202302240000', periodEnd='20
 
     # Loop through the regions and get data for each region
     for region, area_code in regions.items():
-        print(f'Fetching LOAD data for {region}...')
+        print(f'Fetching data for {region}...')
         params['outBiddingZone_Domain'] = area_code
     
         # Use the requests library to get data from the API for the specified time range
         response_content = perform_get_request(url, params)
 
         # Response content is a string of XML data
-        df = xml_to_load_dataframe(response_content)
+        df = xml_to_load_dataframe(response_content, 'Load')
 
         # Save the DataFrame to a CSV file
-        # df.to_csv(f'{output_path}/load_{region}.csv', index=False)
-        df.to_parquet(f'{output_path}/load_{region}.parquet', index = False, engine = 'pyarrow')
-
+        df.to_csv(f'{output_path}/load_{region}.csv', index=False)
        
     return
 
@@ -45,37 +44,48 @@ def get_gen_data_from_entsoe(regions, periodStart='202302240000', periodEnd='202
 
     # URL of the RESTful API
     url = 'https://web-api.tp.entsoe.eu/api'
+   
+    # Converting to format '%Y%m%d%H%M'
+    start_date_by_day = datetime.strptime(periodStart, '%Y%m%d%H%M')
+    end_date_by_day = datetime.strptime(periodEnd, '%Y%m%d%H%M')
 
-    # General parameters for the API
-    params = {
-        'securityToken': '1d9cd4bd-f8aa-476c-8cc1-3442dc91506d',
-        'documentType': 'A75',
-        'processType': 'A16',
-        'outBiddingZone_Domain': 'FILL_IN', # used for Load data
-        'in_Domain': 'FILL_IN', # used for Generation data
-        'periodStart': periodStart, # in the format YYYYMMDDHHMM
-        'periodEnd': periodEnd # in the format YYYYMMDDHHMM
-    }
+    # Computing the difference between dates
+    difference_by_day = end_date_by_day - start_date_by_day
 
-    # Loop through the regions and get data for each region
-    for region, area_code in regions.items():
-        print(f'Fetching GEN data for {region}...')
-        params['outBiddingZone_Domain'] = area_code
-        params['in_Domain'] = area_code
-    
-        # Use the requests library to get data from the API for the specified time range
-        response_content = perform_get_request(url, params)
+    # Iterating over the different days to comply with API's 
+    for d in range(difference_by_day.days):
+        
+        
+        day = (start_date_by_day + timedelta(days=d)).strftime('%Y%m%d%H%M')
 
-        # Response content is a string of XML data
-        dfs = xml_to_gen_data(response_content)
+        # General parameters for the API
+        params = {
+            'securityToken': '1d9cd4bd-f8aa-476c-8cc1-3442dc91506d',
+            'documentType': 'A75',
+            'processType': 'A16',
+            'outBiddingZone_Domain': 'FILL_IN', # used for Load data
+            'in_Domain': 'FILL_IN', # used for Generation data
+            'periodStart': periodStart, # in the format YYYYMMDDHHMM
+            'periodEnd': periodEnd # in the format YYYYMMDDHHMM
+        }
 
-        # Save the dfs to CSV files
-        for psr_type, df in dfs.items():
-            # We only save the data of the renewable energies
-            if psr_type in renewable_energies:
+        # Loop through the regions and get data for each region
+        for region, area_code in regions.items():
+            print(f'Fetching data for {region}...')
+            params['outBiddingZone_Domain'] = area_code
+            params['in_Domain'] = area_code
+        
+            # Use the requests library to get data from the API for the specified time range
+            response_content = perform_get_request(url, params)
+
+            # Response content is a string of XML data
+            dfs = xml_to_gen_data(response_content)
+
+            # Save the dfs to CSV files
+            for psr_type, df in dfs.items():
                 # Save the DataFrame to a CSV file
-                # df.to_csv(f'{output_path}/gen_{region}_{psr_type}.csv', index=False)
-                df.to_parquet(f'{output_path}/gen_{region}_{psr_type}.parquet', index = False, engine = 'pyarrow')
+                df.to_csv(f'{output_path}/gen_{region}_{psr_type}.csv', index=False, mode='a')
+    
     return
 
 
@@ -128,4 +138,3 @@ def main(start_time, end_time, output_path):
 if __name__ == "__main__":
     args = parse_arguments()
     main(args.start_time, args.end_time, args.output_path)
-    exit()

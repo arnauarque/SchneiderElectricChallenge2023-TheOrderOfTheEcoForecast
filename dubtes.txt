@@ -1,0 +1,39 @@
+
+1. Quines son les energies a considerar? green o renewable? La nuclear ho es (perque green es debatible)?
+
+2. Que esperen del ETL? Perque si ja dona el dataset executant el seu script...?
+
+2. No podem afegir noves features? test.csv posa les 'exact columns' pero necessitem timestamp, laborable o no, season ... 
+
+3. Per monitoritzar es pot fer dins de python al final del data ingestion o ha de ser al .sh?
+
+Probar que funcione con los datos que haya del 2023
+
+- 2210 files 
+2210, 442  20%
+---------------------
+Comentaris Jordi: 
+
+Tenim les dades de 2022-2023 pel train/test -> Hem d'agrupar TOT el dataset per StartTime+1-HourGranularity -> 80% train, 20% test després d'agrupar-ho tot. Per aquest 20% tenim un exemple de prediccions (el nou fitxer) per comprovar el format, etc. (podem comprovar el format a nuwe.io)
+
+---------------------
+
+- si pero las dadas de testing 20% cuales son?
+- 
+
+ara mateix y les ultimes x hores
+
+Imputing -> 
+Filtering green energy codes -> 
+Resampling timestamps to '1H' freq -> 
+Inner join all datasets by aggregated timestamps -> 
+Drop rows with NAs
+
+
+TODO:
+
+Cambiar de csv a parquet (?) Comprovar sizes de parquet vs csv y hacer tablita de read_speed...
+Checkear problema con las UTC, CET de UK! comentarlo en escrito que nos hemos dado cuenta
+Quitar la hora de 2021
+
+Comentar que hubieramos puesto mas features con datos externos pero nos estaban agarrando

@@ -120,3 +120,29 @@ def perform_get_request(base_url, params):
         return response.text
     else:
         return response.content
+
+# Code for each type of renewable energy
+renewable_energies = {
+    "B01": "Biomass",
+    "B09": "Geothermal",
+    "B11": "Hydro Run-of-river and poundage",
+    "B12": "Hydro Water Reservoir",
+    "B13": "Marine",
+    "B15": "Other renewable",
+    "B16": "Solar",
+    "B18": "Wind Offshore",
+    "B19": "Wind Onshore"
+}
+
+# Code for each region considered in this problem
+regions = {
+    'HU': '10YHU-MAVIR----U',
+    'IT': '10YIT-GRTN-----B',
+    'PO': '10YPL-AREA-----S',
+    'SP': '10YES-REE------0',
+    'UK': '10Y1001A1001A92E',
+    'DE': '10Y1001A1001A83F',
+    'DK': '10Y1001A1001A65H',
+    'SE': '10YSE-1--------K',
+    'NE': '10YNL----------L',
+}

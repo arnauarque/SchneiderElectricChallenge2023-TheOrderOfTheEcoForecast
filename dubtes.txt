@@ -34,6 +34,16 @@ TODO:
 
 Cambiar de csv a parquet (?) Comprovar sizes de parquet vs csv y hacer tablita de read_speed...
 Checkear problema con las UTC, CET de UK! comentarlo en escrito que nos hemos dado cuenta
-Quitar la hora de 2021
+
+
+comentar que hemos quitado la hora de 2021 que devuelve la API
+
+
 
 Comentar que hubieramos puesto mas features con datos externos pero nos estaban agarrando
+feautures:
+
+    # si hay sol o no?
+    # donde geograficamente, distancias epicentro o algo?
+    # si es festivo o laborable ?
+    # si es vispera de festivo ?

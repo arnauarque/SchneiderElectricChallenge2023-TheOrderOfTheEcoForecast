@@ -370,14 +370,21 @@ def preprocess_data(df):
     ###################################################################
 
     # Creating the new feature for the week of the year
-    df['Week_of_Year'] = df['Date'].dt.isocalendar().week
+    # df['Week_of_Year'] = df['Date'].dt.isocalendar().week
+    df['Week_of_Year_sin'] = np.sin(2 * np.pi * df['Date'].dt.isocalendar().week / 52)
+    df['Week_of_Year_cos'] = np.cos(2 * np.pi * df['Date'].dt.isocalendar().week / 52)
 
     ###################################################################
     #                         MONTH OF YEAR                           #
     ###################################################################
 
     # Creating the new feature for the month of the year
-    df['Month_of_Year'] = df['Date'].dt.month
+    # df['Month_of_Year'] = df['Date'].dt.month
+
+    # Making a Sinusoidal Transformation to keep the cyclical meaning
+    df['Month_of_Year_sin'] = np.sin(2 * np.pi * df['Date'].dt.month / 12)
+    df['Month_of_Year_cos'] = np.cos(2 * np.pi * df['Date'].dt.month / 12)
+
 
     ###################################################################
     #                         OFFICE HOURS                            #
@@ -405,12 +412,6 @@ def preprocess_data(df):
     # plot_transform(df, 'NE_B01', 'log', bins = 10)
     
     plot_evolution(df, 'NE_B01_log')
-    
-    
-    # si hay sol o no?
-    # donde geograficamente, distancias epicentro o algo?
-    # si es festivo o laborable ?
-    # si es vispera de festivo ?
     
     print(df.iloc[:, :2].join(df.iloc[:, -4:]))
     sys.exit(0)
@@ -445,7 +446,6 @@ def main(input_file, output_file):
 
     df_clean = pd.read_parquet("../data/transformed/transformed_dataset.parquet", engine = 'pyarrow')
     df_processed = preprocess_data(df_clean)
-
     save_data(df_processed, output_file)
 
 if __name__ == "__main__":

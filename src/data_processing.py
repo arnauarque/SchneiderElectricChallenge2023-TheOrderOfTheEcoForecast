@@ -5,6 +5,7 @@ from utils import regions
 import matplotlib.pyplot as plt
 import seaborn as sns
 import datetime
+import matplotlib.pyplot as plt
 
 datatypes = {
     'StartTime': str,
@@ -103,85 +104,219 @@ def load_data(filepath):
         df.Load = df.Load.astype(int)
 
     # Generating Hour and Date columns for posterior simplicity
-    df['Hour'] = df['StartTime'].dt.hour
-    df['Date'] = df['StartTime'].dt.date
+    # df['Hour'] = df['StartTime'].dt.hour
+    # df['Date'] = df['StartTime'].dt.date
     return df
 
 def compute_max_region(row):
     max_region = max(regions, key=lambda region: row[f'green_energy_{region}'] - row[f'{region}_Load'])
     return max_region
 
-def transform_merge_data(file_path):
-    # ----------------------------- Merging GEN data ----------------------------- #
+def get_finest_granularity(df):
+    """
+    Returns the minimum difference of time (EndTime-StartTime) of a dataframe 
+    containing two datetime columns StartTime and EndTime.
+    
+    Parameters: 
+    - df: Pandas DataFrame containing the aforementioned columns
+    """
+    
+    diffs = (df['EndTime'] - df['StartTime']).dt.total_seconds() / 60
+    return diffs.min()
+
+def impute_missing_values(df, column):
+    """
+    Imputes the missing values in a column of a DataFrame, taking into account 
+    the minimum granularity of time intervals (StartTime, EndTime).
+
+    Parameters:
+    - df: Pandas DataFrame containing columns StartTime, EndTime, and column
+    - column: The column containing the missing values to be imputed
+    
+    Return: 
+    Returns a Pandas DataFrame with columns Date, Hour, and column. The missing 
+    values in the column have been imputed.
+    """
+    
+    # Data range considered in this problem
+    date_range = pd.date_range(start='2022-01-01 00:00', end='2023-01-01 00:00', freq='15T')
+    
+    # Create a DataFrame that includes all slots with minimum granularity 
+    # time intervals
+    df_full = pd.DataFrame(date_range, columns=['FullDate'])
+    
+    # Set the correct format for StartTime and EndTime
+    df.StartTime = df.StartTime.dt.strftime('%Y-%m-%d %H:%M:%S')
+    df.StartTime = pd.to_datetime(df.StartTime, format='%Y-%m-%d %H:%M:%S')
+    
+    # Merge with the DataFrame that contains the necessary slots
+    df_merged = df_full.merge(df, how='left', left_on='FullDate', right_on='StartTime')
+    
+    # Generate Date and Hour variables and drop unnecessary columns
+    df_merged['Date'] = df_merged.FullDate.dt.date
+    df_merged['Hour'] = df_merged.FullDate.dt.hour
+    df_merged = df_merged[['Date', 'Hour', column]]
+    
+    # Filter rows in the DataFrame to eliminate those
+    # that have no value in the one-hour interval. We only want
+    # to impute missing values that belong to an hour where
+    # there is some known value.
+    # Example 1: We will impute values (2, 3, 4) because in the hour
+    # 00:00 there is a known value (at 00:15 -> 10)
+    #  1) 00:00 -> NaN
+    #  2) 00:15 -> 10
+    #  3) 00:30 -> NaN
+    #  4) 00:45 -> NaN
+    # Example 2: We do not impute any values and remove rows 
+    # from the hour 01:00 because in the one-hour interval there is 
+    # no known value
+    #  1) 01:00 -> NaN
+    #  2) 01:15 -> 10
+    #  3) 01:30 -> NaN
+    #  4) 01:45 -> NaN
+    df_filtered = df_merged.groupby([df_merged.Date, df_merged.Hour])\
+        .filter(lambda x: x[column].notnull().any())
+    
+    # Interpolate missing values using linear method
+    df_filtered.interpolate(method='linear', limit_direction='both', inplace=True)
+    
+    return df_filtered
+
+def myplot(df, column):
+    fig = plt.figure(figsize=(10, 6))
+    
+    # Filter rows with non-null values in the current column
+    # df_filtered = df[['Date', 'Hour', column]].dropna()
+
+    # Plot the points with filled circles and connect them with thin lines
+    _ = plt.plot(df['Date'] + pd.to_timedelta(df['Hour'], unit='h'), df[column],
+             marker='o', linestyle='-', markersize=2, linewidth=0.8, label=column)
+
+    # Customize the appearance of the plot
+    _ = plt.title(f'Evolution in time of column {column}')
+    _ = plt.xlabel('Date and Hour')
+    _ = plt.ylabel(column)
+    _ = plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    serie_ordenada = df[column].sort_values()
+    # Aconsegueix els valors mínim, dos intermig i màxim en una llista
+    valors_seleccionats = [serie_ordenada.min(),
+                            serie_ordenada.quantile(0.25),
+                            serie_ordenada.quantile(0.75),
+                            serie_ordenada.max()]
+    plt.yticks(valors_seleccionats)
+    
+    fig.axes[0].set_xlim([datetime.date(2022, 1, 1), datetime.date(2023, 1, 1)])
+    
+    # Show the plot
+    plt.show()
+
+def transform_merge_data(data_path):
+    """
+    Reads the data from the temporary directory, transforms it considering 
+    its nature (GeneratedEnergy or Load), and merges it into a single 
+    DataFrame with hourly granularity. If there are missing values between 
+    the intervals of each data source, they are imputed using linear 
+    interpolation. If there is a complete one-hour interval without data, 
+    it is set as a missing value.
+
+    Parameters:
+    - data_path: Path where the temporary data is located
+
+    Return:
+    Returns a Pandas DataFrame with all the data (GeneratedEnergy and Load) 
+    grouped into one-hour intervals.
+    """
+    
+    # ---------------------------------------------------------------------------- #
+    #                         Merging GeneratedEnergy data                         #
+    # ---------------------------------------------------------------------------- #
             
     # We create an empty dataframe to merge it with the others
     df_merged = pd.DataFrame(columns=['Date','Hour'])#columns=column_names)
     
-    # Collecting the files regarding the generation of energy
-    # gen_filenames = [ filename for filename in os.listdir(file_path) if 'gen' in filename and filename.endswith('.csv')]    
-    gen_filenames = [ filename for filename in os.listdir(file_path) if 'gen' in filename and filename.endswith('.parquet')]
+    # Collecting the files regarding the generation of energy 
+    gen_filenames = [ filename for filename in os.listdir(data_path) if 'gen' in filename and filename.endswith('.parquet')]
     
     for filename in gen_filenames:
         
         # Loading Gen data
-        df = load_data(os.path.join(file_path, filename))
+        df = load_data(os.path.join(data_path, filename))
         
-        # ---------------------------------------------------------------------------- #
-        #                                MOURE AL CLEAN                                #
-        # ---------------------------------------------------------------------------- #
+        # ------------------------- Preliminar Data Cleaning ------------------------- #
+        
+        # We drop the rows which have no AreaID, since they are duplicated
         df.dropna(subset=['AreaID'], inplace=True)
-        # ------------------------------------- . ------------------------------------ #
         
-        df_grouped = df.groupby(['Date', 'Hour']).agg({'quantity': np.sum}).reset_index()
+        # Imputing missing values
+        df_clean = impute_missing_values(df, 'quantity')
+        
+        # ---------------------- End of Preliminar Data Cleaning --------------------- #
+        
+        # Only to show the difference between imputing vs not imputing missing values
+        # df['Date'] = df.StartTime.dt.date
+        # df['Hour'] = df.StartTime.dt.hour
+        # df_grouped_old = df.groupby(['Date', 'Hour']).agg({'quantity': np.sum}).reset_index()
+        
+        # Grouping the data by Hour and aggregating the 'quantity' column
+        df_grouped = df_clean.groupby(['Date', 'Hour']).agg({'quantity': np.sum}).reset_index()
+        
+        # Only to show the difference between imputing vs not imputing missing values
+        # if 'SP' in filename:
+        #     myplot(df_grouped_old, 'quantity')
+        #     myplot(df_grouped, 'quantity')
+                
+        # Merging the grouped dataset with imputed missing values with the global one
         df_merged = df_merged.merge(df_grouped, how='outer', on=['Date','Hour'])
 
-        # tag = filename[4:-4]
+        # Renaming the merged column
         tag = filename[4:-8]
         df_merged = df_merged.rename(columns = {'quantity': tag})
-        
-        # umbral = len(df_merged.columns) - 1  # Se mantiene la fila si tiene al menos len(df.columns) - umbral valores no nulos
-        # nuevo_df = df_merged.dropna(thresh=umbral)
     
-    # ----------------------------- Merging LOAD data ---------------------------- #
+    # ---------------------------------------------------------------------------- #
+    #                               Merging Load data                              #
+    # ---------------------------------------------------------------------------- #
     
     # Collecting the files regarding the energy load
-    # load_filenames = [ filename for filename in os.listdir(file_path) if 'load' in filename and filename.endswith('.csv')]
-    load_filenames = [ filename for filename in os.listdir(file_path) if 'load' in filename and filename.endswith('.parquet')]
+    load_filenames = [ filename for filename in os.listdir(data_path) if 'load' in filename and filename.endswith('.parquet')]
     
     for filename in load_filenames:
         
         # Loading Load data
-        df = load_data(os.path.join(file_path, filename))
+        df = load_data(os.path.join(data_path, filename))
         
-        # ---------------------------------------------------------------------------- #
-        #                                MOURE AL CLEAN                                #
-        # ---------------------------------------------------------------------------- #
+        # ------------------------- Preliminar Data Cleaning ------------------------- #
+        
+        # We drop the rows which have no AreaID, since they are duplicated
         df.dropna(subset=['AreaID'], inplace=True)
-        # ------------------------------------- . ------------------------------------ #
         
-        df_grouped = df.groupby(['Date', 'Hour']).agg({'Load': np.sum}).reset_index()
-
+        # Imputing missing values
+        df_clean = impute_missing_values(df, 'Load')
+        
+        # ---------------------- End of Preliminar Data Cleaning --------------------- #
+        
+        # Grouping the data by hour by aggregating the Load column
+        df_grouped = df_clean.groupby(['Date', 'Hour']).agg({'Load': np.sum}).reset_index()
+        
+        # Merging the grouped dataset with imputed missing values with the global one
         df_merged = df_merged.merge(df_grouped, how='outer', on=['Date','Hour'])
 
-        # tag = filename[5:-4] + '_Load'
+        # Renaming the merged column
         tag = filename[5:-8] + '_Load'
         df_merged = df_merged.rename(columns = {'Load': tag})
-
-        # umbral = len(df_merged.columns) - 1  # Se mantiene la fila si tiene al menos len(df.columns) - umbral valores no nulos
-        # nuevo_df = df_merged.dropna(thresh=umbral)
     
-    # ---------------------------- Generating outcomes --------------------------- #
-    
-    print(df_merged.head(5))
+    # print(df_merged.head(5))
     
     df_sorted = df_merged.sort_values(by=['Date', 'Hour']).reset_index(drop = True)
-    print('-----------------')
-    print(df_sorted.head(5))
     
-    # df_merged.to_csv('../data/transformed/transformed_dataset_2.csv', index = False, sep = ',', encoding = 'utf-8')
+    # print('-----------------')
+    # print(df_sorted.head(5))
+    
     df_sorted.to_parquet('../data/transformed/transformed_dataset.parquet', index = False, engine = 'pyarrow')
 
-    return df_merged
+    return df_sorted
 
 def clean_data(df):
     # TODO: Handle missing values, outliers, etc.
@@ -303,7 +438,8 @@ def parse_arguments():
 
 def main(input_file, output_file):
     # DANIEL
-    # df = transform_merge_data(input_file)
+    _ = transform_merge_data(input_file)
+    sys.exit(0)
     # df_clean = clean_data(df)
     # df_processed = preprocess_data(df_clean)
 

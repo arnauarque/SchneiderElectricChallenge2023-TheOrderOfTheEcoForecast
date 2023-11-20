@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 from utils import regions
 import matplotlib.pyplot as plt
+import seaborn as sns
+import datetime
 
 datatypes = {
     'StartTime': str,
@@ -13,6 +15,75 @@ datatypes = {
     'quantity': int, 
     'Load': int
 }
+
+# This method plots the 'var' attribute of the 'df' DataFrame
+# in original scale and log-scale (side by side)
+def plot_transform(df, var, trans, bins = 20):
+    fig, axes = plt.subplots(nrows = 1, ncols = 2, 
+                             gridspec_kw = {'width_ratios': [2,2]}, 
+                             figsize = (10,5))
+    # Original scale
+    df.hist(column = var, ax = axes[0], bins = bins, 
+            density = True, color = 'cornflowerblue')
+    sns.kdeplot(data = df, x = var, ax = axes[0], color = 'dimgray');
+    axes[0].set_title(None)
+    # Transform
+    newvar = None
+    if trans == 'log':
+        if (df[var] <= 0).any():
+            print("Warning: Data contains non-positive values, log transformation not applied.")
+            newvar = df[var]
+        else:
+            newvar = np.log10(df[var])
+    elif trans == 'boxcox':
+        newvar, _ = stats.boxcox(df[var])
+        newvar = pd.Series(newvar)
+    elif trans == 'sqrt':
+        newvar = np.sqrt(df[var])
+    else:
+        newvar = df[var]
+        print('Warning: transformation not recognized.',
+              'Showing the originalDF-originalDF plot.')
+    newvar.hist(ax = axes[1], bins = bins, 
+                density = True, color = 'lightcoral')
+    plt.xlabel('%s (%s)' % (var, trans))
+    sns.kdeplot(data = newvar, ax = axes[1], color = 'dimgray');
+    plt.show()
+
+def plot_evolution(df, column):
+    """
+    Shows the evolution of an specific column of a pandas dataframe.
+
+    Parameters:
+    - df: Pandas DataFrame
+    - column: Name of the column for which to plot its evolution
+    """
+    # Ensure the column exists in the DataFrame
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' not found in the DataFrame.")
+    
+    fig = plt.figure(figsize=(10, 6))
+    
+    # Filter rows with non-null values in the current column
+    df_filtered = df[['Date', 'Hour', column]].dropna()
+
+    # Plot the points with filled circles and connect them with thin lines
+    _ = plt.plot(df_filtered['Date'] + pd.to_timedelta(df_filtered['Hour'], unit='h'), df_filtered[column],
+             marker='o', linestyle='-', markersize=2, linewidth=0.8, label=column)
+
+    # Customize the appearance of the plot
+    _ = plt.title(f'Evolution in time of column {column}')
+    _ = plt.xlabel('Date and Hour')
+    _ = plt.ylabel(column)
+    _ = plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    fig.axes[0].set_xlim([datetime.date(2022, 1, 1), datetime.date(2023, 1, 1)])
+    
+    # Show the plot
+    plt.show()
+
 
 def load_data(filepath):
     # Reading the file
@@ -136,38 +207,71 @@ def preprocess_data(df):
     print(df)
     print(df.dtypes)
     
+
+    ###################################################################
+    #                            WEEKDAY                              #
+    ###################################################################
+
     # Creating the new feature for the day of the week
     df.Date = pd.to_datetime(df.Date, format='%Y-%m-%d')
     df['Weekday'] = df['Date'].dt.day_name()
 
+    # Create a figure and axis to plot
+    plt.figure(figsize=(8, 6))
+
+    # Plot boxplots for office hours and non-office hours
+    sns.boxplot(x='Weekday', y='SE_Load', data=df, palette=sns.color_palette("husl", 7) )
+
+    # Set plot labels and title
+    plt.xlabel('Weekday')
+    plt.ylabel('SE Load')
+    plt.title('SE Load Comparison for different Weekdays')
+
+    # Show the plot
+    plt.show()
+
+    ###################################################################
+    #                         WEEK OF YEAR                            #
+    ###################################################################
+
     # Creating the new feature for the week of the year
     df['Week_of_Year'] = df['Date'].dt.isocalendar().week
+
+    ###################################################################
+    #                         MONTH OF YEAR                           #
+    ###################################################################
 
     # Creating the new feature for the month of the year
     df['Month_of_Year'] = df['Date'].dt.month
 
+    ###################################################################
+    #                         OFFICE HOURS                            #
+    ###################################################################
+
     # Creating the new feature to consider the Office hours from 9-5
     df['Office_Hours'] = df['Hour'].between(9, 17, inclusive = 'both')
+    
+    # Create a figure and axis to plot
+    plt.figure(figsize=(8, 6))
 
-    df['date_time'] = df['Date'] + pd.to_timedelta(df['Hour'], unit='h')
+    # Plot boxplots for office hours and non-office hours
+    sns.boxplot(x='Office_Hours', y='SE_Load', data=df, palette={"True": "orange", "False": "blue"})
 
-    # Plotting
-    plt.figure(figsize=(10, 6))
+    # Set plot labels and title
+    plt.xlabel('Hour type')
+    plt.ylabel('SE Load')
+    plt.title('SE Load Comparison between Office Hours and Non-Office Hours')
 
-    # Separate data based on 'Office_Hours' value
-    office_hours = df[df['Office_Hours'] == True]
-    non_office_hours = df[df['Office_Hours'] == False]
-
-    # Plotting points for Office Hours in red and Non-Office Hours in blue
-    plt.scatter(office_hours['date_time'], office_hours['SE_Load'], color='red', label='Office Hours')
-    plt.scatter(non_office_hours['date_time'], non_office_hours['SE_Load'], color='blue', label='Non-Office Hours')
-
-    plt.xlabel('Date')
-    plt.ylabel('SE_Load')
-    plt.title('SE_Load over Time')
-    plt.legend()
+    # Show the plot
     plt.show()
 
+    df['NE_B01'] = df['NE_B01'] + 1
+    df['NE_B01_log'] = np.log10(df['NE_B01'])
+    # plot_transform(df, 'NE_B01', 'log', bins = 10)
+    
+    plot_evolution(df, 'NE_B01_log')
+    
+    
     # si hay sol o no?
     # donde geograficamente, distancias epicentro o algo?
     # si es festivo o laborable ?

@@ -1,11 +1,9 @@
-import argparse, os, sys
+import argparse, os, sys, datetime
 import pandas as pd
 import numpy as np
 from utils import regions
 import matplotlib.pyplot as plt
 import seaborn as sns
-import datetime
-import matplotlib.pyplot as plt
 
 datatypes = {
     'StartTime': str,
@@ -36,9 +34,6 @@ def plot_transform(df, var, trans, bins = 20):
             newvar = df[var]
         else:
             newvar = np.log10(df[var])
-    elif trans == 'boxcox':
-        newvar, _ = stats.boxcox(df[var])
-        newvar = pd.Series(newvar)
     elif trans == 'sqrt':
         newvar = np.sqrt(df[var])
     else:
@@ -88,7 +83,6 @@ def plot_evolution(df, column):
 
 def load_data(filepath):
     # Reading the file
-    # df = pd.read_csv(filepath, sep=',', decimal='.', dtype = datatypes, encoding='utf-8')
     df = pd.read_parquet(filepath, engine = 'pyarrow')
 
     # # Setting the correct types
@@ -102,10 +96,7 @@ def load_data(filepath):
         df.quantity = df.quantity.astype(int)
     if 'Load' in df.columns:
         df.Load = df.Load.astype(int)
-
-    # Generating Hour and Date columns for posterior simplicity
-    # df['Hour'] = df['StartTime'].dt.hour
-    # df['Date'] = df['StartTime'].dt.date
+    
     return df
 
 def compute_max_region(row):
@@ -255,7 +246,7 @@ def transform_merge_data(data_path):
         
         # ---------------------- End of Preliminar Data Cleaning --------------------- #
         
-        # Only to show the difference between imputing vs not imputing missing values
+        # Uncomment to show the difference between imputing vs not imputing missing values
         # df['Date'] = df.StartTime.dt.date
         # df['Hour'] = df.StartTime.dt.hour
         # df_grouped_old = df.groupby(['Date', 'Hour']).agg({'quantity': np.sum}).reset_index()
@@ -263,7 +254,7 @@ def transform_merge_data(data_path):
         # Grouping the data by Hour and aggregating the 'quantity' column
         df_grouped = df_clean.groupby(['Date', 'Hour']).agg({'quantity': np.sum}).reset_index()
         
-        # Only to show the difference between imputing vs not imputing missing values
+        # Uncomment to show the difference between imputing vs not imputing missing values
         # if 'SP' in filename:
         #     myplot(df_grouped_old, 'quantity')
         #     myplot(df_grouped, 'quantity')
@@ -307,18 +298,24 @@ def transform_merge_data(data_path):
         tag = filename[5:-8] + '_Load'
         df_merged = df_merged.rename(columns = {'Load': tag})
     
-    # print(df_merged.head(5))
-    
     df_sorted = df_merged.sort_values(by=['Date', 'Hour']).reset_index(drop = True)
-    
-    # print('-----------------')
-    # print(df_sorted.head(5))
     
     df_sorted.to_parquet('../data/transformed/transformed_dataset.parquet', index = False, engine = 'pyarrow')
 
     return df_sorted
 
 def clean_data(df):
+    
+    # We interpolate the missing values using Linear interpolation
+    df.interpolate(method='linear', limit_direction='both', inplace=True)
+    
+    # Creating green_energy_REGION and deleting REGION_Bxx varibles. 
+    for region in regions:
+        df[f'green_energy_{region}'] = df.filter(like=f'{region}_B').sum(axis=1)
+        df.drop(df.filter(like=f'{region}_B').columns, axis=1, inplace=True)
+    
+    
+    
     # TODO: Handle missing values, outliers, etc.
     # We interpolate the missing values
     # df_merged.interpolate(method='linear', limit_direction='both', inplace=True)
@@ -424,15 +421,15 @@ def save_data(df, output_file):
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Data processing script for Energy Forecasting Hackathon')
     parser.add_argument(
-        '--input_file',
+        '--input_data_path',
         type=str,
-        default='data/raw_data.csv',
-        help='Path to the raw data file to process'
+        default='../data/',
+        help='Path to the raw data directory to process'
     )
     parser.add_argument(
         '--output_file', 
         type=str, 
-        default='data/processed_data.csv', 
+        default='../data/preprocessed/processed_data.csv', 
         help='Path to save the processed data'
     )
     return parser.parse_args()
